@@ -6,13 +6,14 @@ use crate::error::{
 use bitcoin_ffi::OutPoint;
 use bitcoin_ffi::Script;
 
-use bdk_wallet::bitcoin::address::{NetworkChecked, NetworkUnchecked};
+use bdk_wallet::bitcoin::address::NetworkChecked;
+use bdk_wallet::bitcoin::address::NetworkUnchecked;
+use bdk_wallet::bitcoin::address::{Address as BdkAddress, AddressData as BdkAddressData};
 use bdk_wallet::bitcoin::consensus::encode::serialize;
 use bdk_wallet::bitcoin::consensus::Decodable;
 use bdk_wallet::bitcoin::io::Cursor;
 use bdk_wallet::bitcoin::psbt::ExtractTxError;
 use bdk_wallet::bitcoin::secp256k1::Secp256k1;
-use bdk_wallet::bitcoin::Address as BdkAddress;
 use bdk_wallet::bitcoin::Network;
 use bdk_wallet::bitcoin::Psbt as BdkPsbt;
 use bdk_wallet::bitcoin::Transaction as BdkTransaction;
@@ -25,6 +26,19 @@ use std::fmt::Display;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+
+#[derive(Debug)]
+pub enum AddressData {
+    P2pkh { pubkey_hash: String },
+    P2sh { script_hash: String },
+    Segwit { witness_program: WitnessProgram },
+}
+
+#[derive(Debug)]
+pub struct WitnessProgram {
+    pub version: u8,
+    pub program: Vec<u8>,
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Address(BdkAddress<NetworkChecked>);
@@ -57,6 +71,25 @@ impl Address {
             unchecked_address.is_valid_for_network(network)
         } else {
             false
+        }
+    }
+
+    pub fn to_address_data(&self) -> AddressData {
+        match self.0.to_address_data() {
+            BdkAddressData::P2pkh { pubkey_hash } => AddressData::P2pkh {
+                pubkey_hash: pubkey_hash.to_string(),
+            },
+            BdkAddressData::P2sh { script_hash } => AddressData::P2sh {
+                script_hash: script_hash.to_string(),
+            },
+            BdkAddressData::Segwit { witness_program } => AddressData::Segwit {
+                witness_program: WitnessProgram {
+                    version: witness_program.version().to_num(),
+                    program: witness_program.program().as_bytes().to_vec(),
+                },
+            },
+            // AddressData is marked #[non_exhaustive] in bitcoin crate
+            _ => unimplemented!("Unsupported address type"),
         }
     }
 }
